@@ -13,6 +13,7 @@ const (
 	ProviderBedrock   = "bedrock"
 	ProviderVertex    = "vertex"
 	ProviderAzure     = "azure"
+	ProviderOpenAI    = "openai"
 )
 
 // providerSupportsTransparentAuth returns true if the provider type accepts
@@ -61,6 +62,17 @@ var validProviderTypes = map[string]bool{
 	ProviderBedrock: true,
 	ProviderVertex:  true,
 	ProviderAzure:   true,
+	ProviderOpenAI:  true,
+}
+
+var validReasoningEfforts = map[string]bool{
+	"":       true,
+	"none":   true,
+	"low":    true,
+	"medium": true,
+	"high":   true,
+	"xhigh":  true,
+	"max":    true,
 }
 
 // Valid logging levels.
@@ -188,12 +200,14 @@ func validateProvider(provider *ProviderConfig, index int, seenNames map[string]
 	if provider.Type == "" {
 		errs.Addf("%s is required", prefix("type"))
 	} else if !validProviderTypes[provider.Type] {
-		errs.Addf("%s is invalid (got %q, valid: anthropic, zai, ollama, bedrock, vertex, azure)",
+		errs.Addf("%s is invalid (got %q, valid: anthropic, zai, minimax, ollama, bedrock, vertex, azure, openai)",
 			prefix("type"), provider.Type)
 	}
 
 	// Validate cloud provider fields
 	validateCloudProviderConfig(provider, prefix, errs)
+
+	validateOpenAIProviderConfig(provider, prefix, errs)
 
 	// Validate keys
 	for keyIdx, key := range provider.Keys {
@@ -204,6 +218,18 @@ func validateProvider(provider *ProviderConfig, index int, seenNames map[string]
 	if provider.Pooling.Strategy != "" && !validPoolingStrategies[provider.Pooling.Strategy] {
 		errs.Addf("%s is invalid (got %q)", prefix("pooling.strategy"), provider.Pooling.Strategy)
 	}
+}
+
+func validateOpenAIProviderConfig(
+	provider *ProviderConfig,
+	prefix func(string) string,
+	errs *ValidationError,
+) {
+	if provider.Type != ProviderOpenAI || validReasoningEfforts[provider.ReasoningEffort] {
+		return
+	}
+	errs.Addf("%s is invalid (got %q, valid: none, low, medium, high, xhigh, max)",
+		prefix("reasoning_effort"), provider.ReasoningEffort)
 }
 
 // validateCloudProviderConfig validates cloud provider-specific fields.

@@ -83,7 +83,7 @@ func emptyProviderConfig() config.ProviderConfig {
 		Name: "", Type: "", BaseURL: "",
 		AzureDeploymentID: "", AWSAccessKeyID: "",
 		AzureResourceName: "", AWSSecretAccessKey: "",
-		GCPRegion: "", Keys: nil, Models: nil,
+		GCPRegion: "", ReasoningEffort: "", Keys: nil, Models: nil,
 		Pooling: config.PoolingConfig{Strategy: "", Enabled: false},
 		Enabled: false,
 	}

@@ -36,7 +36,7 @@ func zeroProviderConfig() config.ProviderConfig {
 		ModelMapping: nil, AWSRegion: "", GCPProjectID: "",
 		AzureAPIVersion: "", Name: "", Type: "", BaseURL: "",
 		AzureDeploymentID: "", AWSAccessKeyID: "", AzureResourceName: "",
-		AWSSecretAccessKey: "", GCPRegion: "",
+		AWSSecretAccessKey: "", GCPRegion: "", ReasoningEffort: "",
 		Keys: nil, Models: nil,
 		Pooling: config.PoolingConfig{Strategy: "", Enabled: false},
 		Enabled: false,

@@ -32,9 +32,14 @@ server:
 # Routing Configuration
 # ============================================================================
 routing:
-  # Available strategies: shuffle, round_robin, weighted_round_robin, failover
+  # Available strategies: shuffle, round_robin, weighted_round_robin, failover, model_based
   # shuffle: Weighted random selection (recommended for most use cases)
   strategy: "shuffle"
+  # To switch between Claude and GPT models in one Claude Code session:
+  # strategy: "model_based"
+  # model_mapping:
+  #   claude: "anthropic"
+  #   gpt-5.6: "openai"
 
 # ============================================================================
 # Provider Configurations
@@ -55,6 +60,19 @@ providers:
       # - key: "${ANTHROPIC_API_KEY_2}"
       #   rpm_limit: 60
       #   tpm_limit: 100000
+
+  # --------------------------------------------------------------------------
+  # OpenAI Responses API (Optional - GPT-5.6 Sol)
+  # Uncomment to enable
+  # --------------------------------------------------------------------------
+  # - name: "openai"
+  #   type: "openai"
+  #   enabled: true
+  #   models:
+  #     - "gpt-5.6-sol"
+  #   reasoning_effort: "medium"
+  #   keys:
+  #     - key: "${OPENAI_API_KEY}"
 
   # --------------------------------------------------------------------------
   # Z.AI / Zhipu GLM (Optional - ~1/7 cost of Anthropic)

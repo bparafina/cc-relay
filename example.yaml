@@ -67,6 +67,7 @@ routing:
   # model_mapping:
   #   claude-opus: anthropic      # claude-opus-* → anthropic
   #   claude-sonnet: anthropic    # claude-sonnet-* → anthropic
+  #   gpt-5.6: openai             # gpt-5.6* → OpenAI Responses API
   #   GLM: zai                    # GLM* → zai
   #   qwen: ollama                # qwen* → ollama
   #   llama: ollama               # llama* → ollama
@@ -101,6 +102,23 @@ providers:
       # - key: "${ANTHROPIC_API_KEY_2}"
       #   rpm_limit: 60
       #   tpm_limit: 100000
+
+  # --------------------------------------------------------------------------
+  # OpenAI Responses API (GPT-5.6 Sol)
+  # --------------------------------------------------------------------------
+  - name: "openai"
+    type: "openai"
+    enabled: false
+    # base_url: "https://api.openai.com/v1"  # default
+
+    models:
+      - "gpt-5.6-sol"
+
+    # none, low, medium (default), high, xhigh, or max
+    reasoning_effort: "medium"
+
+    keys:
+      - key: "${OPENAI_API_KEY}"
 
   # --------------------------------------------------------------------------
   # Z.AI / Zhipu GLM (Anthropic-compatible, ~1/7 cost)

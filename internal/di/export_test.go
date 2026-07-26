@@ -122,6 +122,7 @@ func MustTestProviderConfig(name, pType, baseURL string, keys []config.KeyConfig
 		AzureResourceName:  "",
 		AWSSecretAccessKey: "",
 		GCPRegion:          "",
+		ReasoningEffort:    "",
 		Models:             nil,
 		Pooling: config.PoolingConfig{
 			Enabled:  false,
@@ -290,6 +291,9 @@ func NewHealthTrackerServiceWithTracker(tracker *health.Tracker) *HealthTrackerS
 
 // CreateCloudProvider exports createCloudProvider for testing.
 var CreateCloudProvider = createCloudProvider
+
+// CreateProvider exports createProvider for testing.
+var CreateProvider = createProvider
 
 // TestProviderMapData is an alias for providerMapData for testing.
 type TestProviderMapData = providerMapData

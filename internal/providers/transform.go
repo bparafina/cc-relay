@@ -81,7 +81,7 @@ func SanitizeBodyForBedrock(body []byte) ([]byte, error) {
 	// Bedrock rejects {"type":"enabled"} thinking on models that only
 	// support adaptive thinking. Translate the Anthropic form.
 	if gjson.GetBytes(body, "thinking.type").String() == "enabled" {
-		body, err = sjson.SetBytes(body, "thinking", map[string]string{"type": "adaptive"})
+		body, err = sjson.SetBytes(body, "thinking", map[string]string{jsonFieldType: "adaptive"})
 		if err != nil {
 			return nil, err
 		}

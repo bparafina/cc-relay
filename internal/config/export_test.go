@@ -89,6 +89,7 @@ func MakeTestProviderConfig() ProviderConfig {
 		AzureResourceName:  "",
 		AWSSecretAccessKey: "",
 		GCPRegion:          "",
+		ReasoningEffort:    "",
 		Keys:               []KeyConfig{},
 		Models:             []string{},
 		Pooling:            MakeTestPoolingConfig(),

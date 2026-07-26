@@ -3,6 +3,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,27 @@ import (
 	"github.com/omarluq/cc-relay/internal/keypool"
 	"github.com/omarluq/cc-relay/internal/providers"
 )
+
+type requestTransformErrorContextKey struct{}
+
+func getRequestTransformError(req *http.Request) error {
+	if req == nil {
+		return nil
+	}
+	transformErr, isError := req.Context().Value(requestTransformErrorContextKey{}).(error)
+	if !isError {
+		return nil
+	}
+	return transformErr
+}
+
+func markRequestTransformError(req *http.Request, transformErr error) *http.Request {
+	return req.WithContext(context.WithValue(
+		req.Context(),
+		requestTransformErrorContextKey{},
+		transformErr,
+	))
+}
 
 // ModifyResponseFunc is a callback for additional response processing.
 type ModifyResponseFunc func(resp *http.Response) error
@@ -64,7 +86,11 @@ func NewProviderProxy(
 		Rewrite:        providerProxy.rewrite,
 		FlushInterval:  -1, // Immediate flush for SSE
 		ModifyResponse: providerProxy.modifyResponse,
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandler: func(w http.ResponseWriter, req *http.Request, _ error) {
+			if transformErr := getRequestTransformError(req); transformErr != nil {
+				WriteError(w, http.StatusBadRequest, "invalid_request_error", transformErr.Error())
+				return
+			}
 			WriteError(w, http.StatusBadGateway, "api_error", "upstream connection failed")
 		},
 	}
@@ -74,40 +100,52 @@ func NewProviderProxy(
 
 // modifyResponse handles SSE headers, Event Stream conversion, and calls the optional hook.
 func (pp *ProviderProxy) modifyResponse(resp *http.Response) error {
-	ct := resp.Header.Get("Content-Type")
-	if ct != "" {
-		mediaType, _, err := mime.ParseMediaType(ct)
-		if err == nil {
-			// Standard SSE: set headers
-			if mediaType == providers.ContentTypeSSE {
-				SetSSEHeaders(resp.Header)
-			}
-
-			// Bedrock Event Stream: needs conversion to SSE
-			// The provider's StreamingContentType tells us what to expect
-			providerStreamType := pp.Provider.StreamingContentType()
-			if providerStreamType == providers.ContentTypeEventStream && mediaType == providers.ContentTypeEventStream {
-				// Mark response for Event Stream conversion
-				// The actual conversion happens via TransformResponse
-				// We need to convert the Content-Type for the client
-				resp.Header.Set("Content-Type", providers.ContentTypeSSE)
-				SetSSEHeaders(resp.Header)
-
-				// Store original response body for conversion
-				// The TransformResponse needs http.ResponseWriter which we don't have here
-				// Instead, we wrap the body to convert Event Stream to SSE on read
-				if resp.Body != nil {
-					resp.Body = newEventStreamToSSEBody(resp.Body)
-				}
-			}
-		}
+	if err := pp.transformProviderHTTPResponse(resp); err != nil {
+		return err
 	}
+
+	pp.normalizeStreamingResponse(resp)
 
 	// Call the hook for additional processing (key pool updates, circuit breaker)
 	if pp.modifyResponseHook != nil {
 		return pp.modifyResponseHook(resp)
 	}
 
+	return nil
+}
+
+func (pp *ProviderProxy) normalizeStreamingResponse(resp *http.Response) {
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		return
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return
+	}
+	if mediaType == providers.ContentTypeSSE {
+		SetSSEHeaders(resp.Header)
+	}
+	if pp.Provider.StreamingContentType() != providers.ContentTypeEventStream ||
+		mediaType != providers.ContentTypeEventStream {
+		return
+	}
+
+	resp.Header.Set("Content-Type", providers.ContentTypeSSE)
+	SetSSEHeaders(resp.Header)
+	if resp.Body != nil {
+		resp.Body = newEventStreamToSSEBody(resp.Body)
+	}
+}
+
+func (pp *ProviderProxy) transformProviderHTTPResponse(resp *http.Response) error {
+	transformer, needsTransform := pp.Provider.(providers.HTTPResponseTransformer)
+	if !needsTransform {
+		return nil
+	}
+	if err := transformer.TransformHTTPResponse(resp); err != nil {
+		return fmt.Errorf("transform provider response: %w", err)
+	}
 	return nil
 }
 
@@ -141,10 +179,7 @@ func (pp *ProviderProxy) rewriteWithTransform(proxyRequest *httputil.ProxyReques
 			log.Error().Err(closeErr).Msg("failed to close request body")
 		}
 		if err != nil {
-			// If we can't read body, fall back to static URL
-			proxyRequest.SetURL(pp.targetURL)
-			proxyRequest.SetXForwarded()
-			pp.setAuth(proxyRequest)
+			pp.failRequestTransform(proxyRequest, fmt.Errorf("read request body: %w", err))
 			return
 		}
 	}
@@ -155,24 +190,14 @@ func (pp *ProviderProxy) rewriteWithTransform(proxyRequest *httputil.ProxyReques
 	// Transform the request body and get the dynamic target URL
 	newBody, targetURLStr, err := pp.Provider.TransformRequest(originalBody, endpoint)
 	if err != nil {
-		// On transform error, fall back to static URL with original body
-		proxyRequest.Out.Body = io.NopCloser(bytes.NewReader(originalBody))
-		proxyRequest.Out.ContentLength = int64(len(originalBody))
-		proxyRequest.SetURL(pp.targetURL)
-		proxyRequest.SetXForwarded()
-		pp.setAuth(proxyRequest)
+		pp.failRequestTransform(proxyRequest, err)
 		return
 	}
 
 	// Parse the dynamic target URL returned by the provider
 	targetURL, err := url.Parse(targetURLStr)
 	if err != nil {
-		// On URL parse error, fall back to static URL with original body
-		proxyRequest.Out.Body = io.NopCloser(bytes.NewReader(originalBody))
-		proxyRequest.Out.ContentLength = int64(len(originalBody))
-		proxyRequest.SetURL(pp.targetURL)
-		proxyRequest.SetXForwarded()
-		pp.setAuth(proxyRequest)
+		pp.failRequestTransform(proxyRequest, fmt.Errorf("invalid transformed target URL: %w", err))
 		return
 	}
 
@@ -186,6 +211,22 @@ func (pp *ProviderProxy) rewriteWithTransform(proxyRequest *httputil.ProxyReques
 	proxyRequest.Out.Host = targetURL.Host
 	proxyRequest.SetXForwarded()
 	pp.setAuth(proxyRequest)
+}
+
+// failRequestTransform prevents an incompatible request body from being sent
+// upstream. ReverseProxy's Rewrite callback cannot return an error, so route
+// the request to a guaranteed-invalid local target and attach the real error
+// for ErrorHandler to return in Anthropic format.
+func (pp *ProviderProxy) failRequestTransform(proxyRequest *httputil.ProxyRequest, transformErr error) {
+	proxyRequest.Out = markRequestTransformError(proxyRequest.Out, transformErr)
+	proxyRequest.Out.URL = &url.URL{
+		Scheme: "http",
+		Host:   "127.0.0.1:0",
+		Path:   "/",
+	}
+	proxyRequest.Out.Host = "127.0.0.1:0"
+	proxyRequest.Out.Body = http.NoBody
+	proxyRequest.Out.ContentLength = 0
 }
 
 // setAuth handles authentication and header forwarding.
