@@ -235,6 +235,11 @@ func (p *BedrockProvider) TransformRequest(
 		return nil, "", fmt.Errorf("bedrock: transform failed: %w", err)
 	}
 
+	newBody, err = SanitizeBodyForBedrock(newBody)
+	if err != nil {
+		return nil, "", fmt.Errorf("bedrock: sanitize failed: %w", err)
+	}
+
 	// Map model name to Bedrock format if needed
 	model = p.MapModel(model)
 

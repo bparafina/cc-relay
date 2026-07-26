@@ -54,3 +54,38 @@ func TransformBodyForCloudProvider(
 
 	return newBody, model, nil
 }
+
+// bedrockUnsupportedFields are top-level Anthropic Messages API fields that
+// Bedrock's InvokeModel schema rejects with "Extra inputs are not permitted".
+// Clients talking to the relay think it's the real Anthropic API and send
+// them; strip before forwarding. "stream" is expressed by the
+// invoke-with-response-stream endpoint instead of the body.
+var bedrockUnsupportedFields = []string{
+	"stream",
+	"context_management",
+	"betas",
+}
+
+// SanitizeBodyForBedrock removes request fields Bedrock's InvokeModel schema
+// rejects and translates thinking config to the form Bedrock accepts.
+// Bedrock-specific: Vertex/Azure accept the standard Anthropic schema.
+func SanitizeBodyForBedrock(body []byte) ([]byte, error) {
+	var err error
+	for _, field := range bedrockUnsupportedFields {
+		body, err = sjson.DeleteBytes(body, field)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Bedrock rejects {"type":"enabled"} thinking on models that only
+	// support adaptive thinking. Translate the Anthropic form.
+	if gjson.GetBytes(body, "thinking.type").String() == "enabled" {
+		body, err = sjson.SetBytes(body, "thinking", map[string]string{"type": "adaptive"})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return body, nil
+}
