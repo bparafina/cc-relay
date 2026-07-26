@@ -77,7 +77,6 @@ func assertBedrockPreservesBodyFields(
 	const (
 		expectedMaxTokens = float64(1024)
 		expectedTemp      = 0.7
-		expectedStream    = true
 		expectedSystem    = "You are helpful"
 	)
 
@@ -87,8 +86,10 @@ func assertBedrockPreservesBodyFields(
 	if result["temperature"] != expectedTemp {
 		t.Errorf("Expected temperature=%v, got %v", expectedTemp, result["temperature"])
 	}
-	if result["stream"] != expectedStream {
-		t.Errorf("Expected stream=%v, got %v", expectedStream, result["stream"])
+	// "stream" must be stripped: Bedrock's InvokeModel schema rejects it
+	// (streaming is expressed by the endpoint, not the body).
+	if _, present := result["stream"]; present {
+		t.Errorf("Expected stream to be stripped for Bedrock, got %v", result["stream"])
 	}
 	if result["system"] != expectedSystem {
 		t.Errorf("Expected system=%v, got %v", expectedSystem, result["system"])

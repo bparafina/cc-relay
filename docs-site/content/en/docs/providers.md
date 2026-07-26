@@ -1,6 +1,6 @@
 ---
 title: "Providers"
-description: "Configure Anthropic, Z.AI, MiniMax, and Ollama providers in cc-relay"
+description: "Configure Anthropic, OpenAI, Z.AI, MiniMax, and Ollama providers in cc-relay"
 weight: 5
 ---
 
@@ -13,6 +13,7 @@ CC-Relay acts as a proxy between Claude Code and various LLM backends. All provi
 | Provider | Type | Description | Cost |
 |----------|------|-------------|------|
 | Anthropic | `anthropic` | Direct Anthropic API access | Standard Anthropic pricing |
+| OpenAI | `openai` | GPT models through the Responses API | OpenAI API pricing |
 | Z.AI | `zai` | Zhipu AI GLM models, Anthropic-compatible | ~1/7 of Anthropic pricing |
 | MiniMax | `minimax` | MiniMax models, Anthropic-compatible | MiniMax pricing |
 | Ollama | `ollama` | Local LLM inference | Free (local compute) |
@@ -104,6 +105,41 @@ claude
 ```
 
 See [Transparent Authentication](/docs/configuration/#transparent-authentication) for details.
+
+## OpenAI Provider
+
+The OpenAI provider translates Claude Code's Anthropic Messages requests to the
+OpenAI Responses API. Text, images, client tools, tool results, errors, token
+usage, and streaming events are translated back to Anthropic format.
+
+```yaml
+routing:
+  strategy: model_based
+  model_mapping:
+    claude: anthropic
+    gpt-5.6: openai
+  default_provider: anthropic
+
+providers:
+  - name: "openai"
+    type: "openai"
+    enabled: true
+    # base_url: "https://api.openai.com/v1"
+    reasoning_effort: "medium"
+    models:
+      - "gpt-5.6-sol"
+    keys:
+      - key: "${OPENAI_API_KEY}"
+```
+
+Set `OPENAI_API_KEY`, restart or reload cc-relay, then select
+`gpt-5.6-sol` as the Claude Code session model. Use an OpenAI Platform API key;
+Codex or ChatGPT subscription credentials are not read by cc-relay.
+
+The provider resends the visible Claude Code conversation on each request with
+OpenAI response storage disabled. Visible messages and tool history therefore
+survive model switches, while provider-private reasoning does not cross the
+boundary.
 
 ## Z.AI Provider
 

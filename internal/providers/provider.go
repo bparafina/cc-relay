@@ -75,3 +75,12 @@ type Provider interface {
 	// Bedrock: "application/vnd.amazon.eventstream"
 	StreamingContentType() string
 }
+
+// HTTPResponseTransformer is implemented by providers whose upstream HTTP
+// responses use a different wire format from the Anthropic Messages API.
+//
+// Implementations may replace resp.Body and update response headers. The proxy
+// invokes this hook before applying its generic SSE header handling.
+type HTTPResponseTransformer interface {
+	TransformHTTPResponse(resp *http.Response) error
+}

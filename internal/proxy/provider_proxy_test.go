@@ -2,6 +2,7 @@ package proxy_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,109 @@ import (
 
 	"github.com/omarluq/cc-relay/internal/proxy"
 )
+
+func TestProviderProxyOpenAIEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	var receivedPath string
+	var receivedAuth string
+	var receivedBody map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedPath = request.URL.Path
+		receivedAuth = request.Header.Get("Authorization")
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&receivedBody))
+		writer.Header().Set("Content-Type", "application/json")
+		_, writeErr := writer.Write([]byte(`{
+			"id":"resp_123",
+			"model":"gpt-5.6-sol",
+			"status":"completed",
+			"output":[{"type":"message","content":[{"type":"output_text","text":"Done"}]}],
+			"usage":{"input_tokens":10,"output_tokens":2}
+		}`))
+		require.NoError(t, writeErr)
+	}))
+	defer backend.Close()
+
+	provider := providers.NewOpenAIProvider(&providers.OpenAIConfig{
+		ModelMapping:    nil,
+		Name:            "openai",
+		BaseURL:         backend.URL,
+		ReasoningEffort: "",
+		Models:          nil,
+	})
+	providerProxy, err := proxy.NewProviderProxy(
+		provider,
+		"sk-openai",
+		nil,
+		proxy.TestDebugOptions(),
+		nil,
+	)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/v1/messages",
+		strings.NewReader(`{
+			"model":"gpt-5.6-sol",
+			"max_tokens":1024,
+			"messages":[{"role":"user","content":"Finish this task"}]
+		}`),
+	)
+	req.Header.Set("X-Selected-Key", "sk-openai")
+	recorder := httptest.NewRecorder()
+	providerProxy.Proxy.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "/responses", receivedPath)
+	assert.Equal(t, "Bearer sk-openai", receivedAuth)
+	assert.Equal(t, "gpt-5.6-sol", receivedBody["model"])
+	assert.Equal(t, false, receivedBody["store"])
+	assert.JSONEq(t, `{
+		"id":"resp_123",
+		"type":"message",
+		"role":"assistant",
+		"model":"gpt-5.6-sol",
+		"content":[{"type":"text","text":"Done"}],
+		"stop_reason":"end_turn",
+		"stop_sequence":null,
+		"usage":{"input_tokens":10,"output_tokens":2}
+	}`, recorder.Body.String())
+}
+
+func TestProviderProxyOpenAITransformFailureIsClientError(t *testing.T) {
+	t.Parallel()
+
+	provider := providers.NewOpenAIProvider(&providers.OpenAIConfig{
+		ModelMapping:    nil,
+		Name:            "openai",
+		BaseURL:         "http://127.0.0.1:1",
+		ReasoningEffort: "",
+		Models:          nil,
+	})
+	providerProxy, err := proxy.NewProviderProxy(
+		provider,
+		"sk-openai",
+		nil,
+		proxy.TestDebugOptions(),
+		nil,
+	)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/v1/messages",
+		strings.NewReader(`{"not":"a messages request"}`),
+	)
+	req.Header.Set("X-Selected-Key", "sk-openai")
+	recorder := httptest.NewRecorder()
+	providerProxy.Proxy.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "model is required")
+	assert.Contains(t, recorder.Body.String(), "invalid_request_error")
+}
 
 // TestNewProviderProxyValidProvider tests creating a ProviderProxy with valid provider.
 func TestNewProviderProxyValidProvider(t *testing.T) {

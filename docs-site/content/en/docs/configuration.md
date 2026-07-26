@@ -120,6 +120,19 @@ providers:
       - "GLM-4.5-Air"
       - "GLM-4-Plus"
 
+  # OpenAI Responses API
+  - name: "openai"
+    type: "openai"
+    enabled: false
+    base_url: "https://api.openai.com/v1"
+    reasoning_effort: "medium"
+
+    keys:
+      - key: "${OPENAI_API_KEY}"
+
+    models:
+      - "gpt-5.6-sol"
+
 # ==========================================================================
 # Logging Configuration
 # ==========================================================================

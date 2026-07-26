@@ -112,10 +112,10 @@ server:
   listen: "127.0.0.1:18787"
   api_key: "test-key"
 providers:
-  - name: "openai"
-    type: "openai"
+  - name: "unsupported"
+    type: "unsupported"
     enabled: true
-    base_url: "https://api.openai.com"
+    base_url: "https://api.example.com"
     keys:
       - key: "test-key"
 `, "type is invalid")

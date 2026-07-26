@@ -26,6 +26,7 @@ func baseProviderConfig(name, pType string) config.ProviderConfig {
 		AzureResourceName:  "",
 		AWSSecretAccessKey: "",
 		GCPRegion:          "",
+		ReasoningEffort:    "",
 		Models:             nil,
 		Pooling:            config.PoolingConfig{Enabled: false, Strategy: ""},
 		Keys:               nil,
@@ -55,6 +56,24 @@ func baseAzureConfig(name, resource, deployment, apiVersion string) config.Provi
 	cfg.AzureDeploymentID = deployment
 	cfg.AzureAPIVersion = apiVersion
 	return cfg
+}
+
+func TestCreateProviderOpenAI(t *testing.T) {
+	t.Parallel()
+
+	cfg := baseProviderConfig("openai-primary", di.ProviderTypeOpenAI)
+	cfg.BaseURL = "https://openai.example/v1"
+	cfg.Models = []string{"gpt-5.6-sol"}
+	cfg.ReasoningEffort = "high"
+
+	provider, err := di.CreateProvider(context.Background(), &cfg)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, provider)
+	assert.Equal(t, "openai-primary", provider.Name())
+	assert.Equal(t, "openai", provider.Owner())
+	assert.Equal(t, "https://openai.example/v1", provider.BaseURL())
+	assert.True(t, provider.RequiresBodyTransform())
 }
 
 // newEmptyProviderMapData returns a fully initialized empty providerMapData.

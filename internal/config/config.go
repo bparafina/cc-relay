@@ -165,6 +165,7 @@ type ProviderConfig struct {
 	AzureResourceName  string            `yaml:"azure_resource_name" toml:"azure_resource_name"`
 	AWSSecretAccessKey string            `yaml:"aws_secret_access_key" toml:"aws_secret_access_key"`
 	GCPRegion          string            `yaml:"gcp_region" toml:"gcp_region"`
+	ReasoningEffort    string            `yaml:"reasoning_effort" toml:"reasoning_effort"`
 	Keys               []KeyConfig       `yaml:"keys" toml:"keys"`
 	Models             []string          `yaml:"models" toml:"models"`
 	Pooling            PoolingConfig     `yaml:"pooling" toml:"pooling"`

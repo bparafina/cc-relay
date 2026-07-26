@@ -59,6 +59,34 @@ func TestValidateValidMinimalConfig(t *testing.T) {
 	}
 }
 
+func TestValidateOpenAIReasoningEffort(t *testing.T) {
+	t.Parallel()
+
+	validProvider := config.MakeTestProviderConfig()
+	validProvider.Name = "openai"
+	validProvider.Type = config.ProviderOpenAI
+	validProvider.ReasoningEffort = "xhigh"
+	validProvider.Keys = []config.KeyConfig{config.MakeTestKeyConfig("sk-test")}
+	requireNoValidationError(t, configWithProvider(&validProvider))
+
+	invalidProvider := validProvider
+	invalidProvider.ReasoningEffort = "extreme"
+	err := configWithProvider(&invalidProvider).Validate()
+	if err == nil {
+		t.Fatal("expected invalid reasoning effort error")
+	}
+	if !strings.Contains(err.Error(), "reasoning_effort") {
+		t.Fatalf("expected reasoning_effort error, got %v", err)
+	}
+}
+
+func requireNoValidationError(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
 func TestValidateValidFullConfig(t *testing.T) {
 	t.Parallel()
 
