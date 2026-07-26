@@ -4,6 +4,7 @@ package health
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/rs/zerolog"
 	"github.com/sony/gobreaker/v2"
@@ -111,9 +112,13 @@ func (c *CircuitBreaker) ReportFailure(err error) bool {
 }
 
 // ShouldCountAsFailure determines if a response should count as a circuit breaker failure.
+// 401/403 count as failures: for SigV4 providers (Bedrock) they mean expired or
+// invalid credentials — the provider is effectively down and should trip the breaker
+// so routing fails over.
 func ShouldCountAsFailure(statusCode int, err error) bool {
 	if err != nil {
 		return !errors.Is(err, context.Canceled)
 	}
-	return statusCode >= 500 || statusCode == 429
+	return statusCode >= 500 || statusCode == 429 ||
+		statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
 }

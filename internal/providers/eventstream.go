@@ -4,6 +4,7 @@ package providers
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -47,9 +49,9 @@ var fixedSizeHeaderTypes = map[byte]int{
 // This is not a fatal error - the stream can continue processing.
 var ErrMessageSkipped = errors.New("eventstream: message skipped due to parse error")
 
-// eventStreamCRCTable is the precomputed CRC32-C table used by AWS Event Stream.
-// AWS uses CRC32-C (Castagnoli polynomial).
-var eventStreamCRCTable = crc32.MakeTable(crc32.Castagnoli)
+// eventStreamCRCTable is the precomputed CRC32 (IEEE) table used by AWS Event
+// Stream. The vnd.amazon.eventstream spec uses standard CRC32, NOT CRC32-C.
+var eventStreamCRCTable = crc32.MakeTable(crc32.IEEE)
 
 // EventStreamMessage represents a decoded AWS Event Stream message.
 type EventStreamMessage struct {
@@ -484,7 +486,35 @@ func FormatMessageAsSSE(msg *EventStreamMessage) []byte {
 		return nil
 	}
 
+	// Bedrock wraps each Anthropic event as {"bytes":"<base64>", "p":"..."}
+	// under event-type "chunk". Unwrap to the inner event and take the SSE
+	// event name from its "type" field.
+	if eventType == "chunk" {
+		if inner, innerType, ok := decodeBedrockChunk(msg.Payload); ok {
+			return formatSSEEvent(innerType, inner)
+		}
+	}
+
 	return formatSSEEvent(eventType, msg.Payload)
+}
+
+// decodeBedrockChunk unwraps a Bedrock "chunk" payload into the inner
+// Anthropic event JSON and its type. Returns ok=false if the payload
+// doesn't match the expected wrapper shape.
+func decodeBedrockChunk(payload []byte) (inner []byte, eventType string, ok bool) {
+	b64 := gjson.GetBytes(payload, "bytes")
+	if !b64.Exists() {
+		return nil, "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(b64.String())
+	if err != nil {
+		return nil, "", false
+	}
+	innerType := gjson.GetBytes(decoded, "type").String()
+	if innerType == "" {
+		return nil, "", false
+	}
+	return decoded, innerType, true
 }
 
 // formatExceptionAsSSE formats an exception as an SSE error event.

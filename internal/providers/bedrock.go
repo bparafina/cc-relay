@@ -142,6 +142,13 @@ func (p *BedrockProvider) Authenticate(req *http.Request, _ string) error {
 
 	ctx := req.Context()
 
+	// Strip hop-by-hop forwarding headers before signing: intermediary
+	// proxies (e.g. Cloudflare WARP) rewrite them in flight, which breaks
+	// the SigV4 signature. Bedrock doesn't use them.
+	req.Header.Del("X-Forwarded-For")
+	req.Header.Del("X-Forwarded-Host")
+	req.Header.Del("X-Forwarded-Proto")
+
 	// Get credentials
 	creds, err := p.credentials.Retrieve(ctx)
 	if err != nil {
@@ -180,9 +187,9 @@ func (p *BedrockProvider) Authenticate(req *http.Request, _ string) error {
 		bedrockService,
 		p.region,
 		time.Now(),
-		func(options *v4.SignerOptions) {
-			options.DisableURIPathEscaping = true
-		},
+		// Default URI path escaping must stay on: Bedrock model IDs contain
+		// ':' which Go escapes to %3A on the wire, and AWS builds its
+		// canonical string from that escaped form.
 	)
 	if err != nil {
 		return fmt.Errorf("bedrock: failed to sign request: %w", err)
