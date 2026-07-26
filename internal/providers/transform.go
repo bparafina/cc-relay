@@ -2,6 +2,8 @@
 package providers
 
 import (
+	"strings"
+
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -66,10 +68,30 @@ var bedrockUnsupportedFields = []string{
 	"betas",
 }
 
+// adaptiveThinkingModels marks model families that require
+// {"type":"adaptive"} thinking on Bedrock. Older families (haiku, opus/sonnet
+// 4.x) reject "adaptive" — translating unconditionally breaks them the same
+// way "enabled" breaks Claude 5 models.
+var adaptiveThinkingModels = []string{
+	"fable-5",
+	"opus-5",
+	"sonnet-5",
+}
+
+func modelRequiresAdaptiveThinking(model string) bool {
+	for _, marker := range adaptiveThinkingModels {
+		if strings.Contains(model, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // SanitizeBodyForBedrock removes request fields Bedrock's InvokeModel schema
-// rejects and translates thinking config to the form Bedrock accepts.
-// Bedrock-specific: Vertex/Azure accept the standard Anthropic schema.
-func SanitizeBodyForBedrock(body []byte) ([]byte, error) {
+// rejects and translates thinking config to the form the target model
+// accepts. Bedrock-specific: Vertex/Azure accept the standard schema.
+// The model is the Bedrock model ID (after mapping).
+func SanitizeBodyForBedrock(body []byte, model string) ([]byte, error) {
 	var err error
 	for _, field := range bedrockUnsupportedFields {
 		body, err = sjson.DeleteBytes(body, field)
@@ -78,13 +100,17 @@ func SanitizeBodyForBedrock(body []byte) ([]byte, error) {
 		}
 	}
 
-	// Bedrock rejects {"type":"enabled"} thinking on models that only
-	// support adaptive thinking. Translate the Anthropic form.
-	if gjson.GetBytes(body, "thinking.type").String() == "enabled" {
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	requiresAdaptive := modelRequiresAdaptiveThinking(model)
+	switch {
+	case thinkingType == "enabled" && requiresAdaptive:
 		body, err = sjson.SetBytes(body, "thinking", map[string]string{"type": "adaptive"})
-		if err != nil {
-			return nil, err
-		}
+	case thinkingType == "adaptive" && !requiresAdaptive:
+		// Models without adaptive thinking reject the field entirely.
+		body, err = sjson.DeleteBytes(body, "thinking")
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return body, nil

@@ -339,3 +339,56 @@ func TestIsStreamingRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeBodyForBedrock(t *testing.T) {
+	t.Parallel()
+
+	const claude5Model = "us.anthropic.claude-fable-5"
+	const claude45Model = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+	t.Run("strips unsupported fields", func(t *testing.T) {
+		t.Parallel()
+		body := []byte(`{"stream":true,"context_management":{"edits":[]},"betas":["x"],"max_tokens":10}`)
+		result, err := providers.SanitizeBodyForBedrock(body, claude5Model)
+		require.NoError(t, err)
+
+		var parsed map[string]any
+		require.NoError(t, json.Unmarshal(result, &parsed))
+		assert.NotContains(t, parsed, "stream")
+		assert.NotContains(t, parsed, "context_management")
+		assert.NotContains(t, parsed, "betas")
+		assert.Contains(t, parsed, "max_tokens")
+	})
+
+	t.Run("translates enabled to adaptive for claude 5 models", func(t *testing.T) {
+		t.Parallel()
+		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":1024}}`)
+		result, err := providers.SanitizeBodyForBedrock(body, claude5Model)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"thinking":{"type":"adaptive"}}`, string(result))
+	})
+
+	t.Run("keeps enabled thinking for pre-5 models", func(t *testing.T) {
+		t.Parallel()
+		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":1024}}`)
+		result, err := providers.SanitizeBodyForBedrock(body, claude45Model)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"thinking":{"type":"enabled","budget_tokens":1024}}`, string(result))
+	})
+
+	t.Run("drops adaptive thinking for pre-5 models", func(t *testing.T) {
+		t.Parallel()
+		body := []byte(`{"thinking":{"type":"adaptive"},"max_tokens":10}`)
+		result, err := providers.SanitizeBodyForBedrock(body, claude45Model)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"max_tokens":10}`, string(result))
+	})
+
+	t.Run("keeps adaptive thinking for claude 5 models", func(t *testing.T) {
+		t.Parallel()
+		body := []byte(`{"thinking":{"type":"adaptive"}}`)
+		result, err := providers.SanitizeBodyForBedrock(body, claude5Model)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"thinking":{"type":"adaptive"}}`, string(result))
+	})
+}

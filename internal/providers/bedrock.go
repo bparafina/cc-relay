@@ -235,13 +235,13 @@ func (p *BedrockProvider) TransformRequest(
 		return nil, "", fmt.Errorf("bedrock: transform failed: %w", err)
 	}
 
-	newBody, err = SanitizeBodyForBedrock(newBody)
+	// Map model name to Bedrock format if needed
+	model = p.MapModel(model)
+
+	newBody, err = SanitizeBodyForBedrock(newBody, model)
 	if err != nil {
 		return nil, "", fmt.Errorf("bedrock: sanitize failed: %w", err)
 	}
-
-	// Map model name to Bedrock format if needed
-	model = p.MapModel(model)
 
 	// Construct Bedrock URL with model in path
 	// Format: /model/{model}/invoke-with-response-stream
